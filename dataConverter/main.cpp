@@ -55,6 +55,11 @@ struct GpsPosition {
     double altitude{0};
 };
 
+struct Steps {
+    int32_t steps{0};
+    double timestam{0};
+} __attribute__((packed)) ;
+
 //vrati pointer a pocet objektov
 Double4* loadAccGyro(const char* filepath, long& count ) {
     FILE* file = fopen(filepath, "r");
@@ -128,6 +133,23 @@ GpsPosition* loadGps(const char* filepath, long& count) {
     return array; //mazat to nejdeme ;)
 }
 
+Steps* loadSteps(const char* filepath, long& count) {
+    FILE* file = fopen(filepath, "r");
+    if (file == nullptr) {
+        count = 0;
+        return nullptr;
+    }
+    
+    fseek(file, 0, SEEK_END);
+    long size = ftell(file);
+    fseek(file, 0, SEEK_SET);
+    
+    count = size / sizeof(Steps);
+    Steps* array = new Steps[count];
+    fread(array, sizeof(Steps), count, file);
+    return array; //mazat to nejdeme ;)
+}
+
 void writeToFileAsText(FILE* file, const char* format, ...) {
     va_list args;
     va_start (args, format);
@@ -158,6 +180,12 @@ int main(int argc, const char * argv[]) {
     long altiCount = 0;
     Altimeter* altiData = loadAltimeter((filepath + ".alti").c_str(), altiCount);
     
+    long stepsCount = 0;
+    Steps* stepsData = loadSteps((filepath + ".pedo").c_str(), stepsCount);
+    
+//    for(int x = 0;x < stepsCount; x++ ) {
+//        printf("%d %f\n", stepsData[x].steps, stepsData[x].timestam);
+//    }
     
     double maxDouble = numeric_limits<double>::max();
     double accTimestamp=maxDouble, gyroTimestamp=maxDouble, gpsTimestamp=maxDouble, altiTimestamp=maxDouble;
@@ -183,6 +211,7 @@ int main(int argc, const char * argv[]) {
     long gyroIndex = 0;
     long gpsIndex = 0;
     long altiIndex = 0;
+    long stepsIndex = 0;
     
     FILE* writeFP = fopen((filepath + ".csv").c_str(), "w");
     double simulationTime = 0;
@@ -192,10 +221,12 @@ int main(int argc, const char * argv[]) {
     double lastPressure = 0;
     Double4 lastAcc;
     Double4 lastGyro;
+    double lastSteps = 0;
     
     double zeroTime = minTimestamp;
     
     writeToFileAsText(writeFP, "timestamp,accx,accy,accz,gyrox,gyroy,gyroz,gpsspeed,pressure\n");
+    
     while(true) {
         if (accIndex >= accCount && gyroIndex >= gyroCount && gpsIndex >= gpsCount && altiIndex >= altiCount) {
             break; //ende
@@ -205,6 +236,7 @@ int main(int argc, const char * argv[]) {
         bool sendGyro = false;
         bool sendGPS = false;
         bool sendAlti = false;
+        bool sendSteps = false;
         
         if(accIndex < accCount) {
             double time = accData[accIndex].timestamp - zeroTime;
@@ -244,7 +276,17 @@ int main(int argc, const char * argv[]) {
             }
         }
         
+        if (stepsIndex < stepsCount) {
+            double time = stepsData[stepsIndex].timestam - zeroTime;
+            if (time<simulationTime) {
+                sendSteps = true;
+                stepsIndex+=1;
+                lastSteps = stepsData[stepsIndex].steps;
+            }
+        }
+        
         writeToFileAsText(writeFP, "%f,%f,%f,%f,%f,%f,%f,%f,%f\n",simulationTime+zeroTime, lastAcc.x,lastAcc.y,lastAcc.z,lastGyro.x,lastGyro.y,lastGyro.z,lastGpsSpeed,lastPressure);
+        
         
         simulationTime += simulationTimestep;
     };
